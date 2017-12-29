@@ -1,9 +1,12 @@
 import org.apache.spark.SparkConf;
 import org.apache.spark.SparkContext;
 import org.apache.spark.SparkContext$;
+import org.apache.log4j.Logger;
+import org.apache.log4j.Level;
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.rdd.RDD;
+import org.apache.spark.storage.StorageLevel;
 import scala.Tuple2;
 
 import java.util.Iterator;
@@ -17,10 +20,12 @@ public class Main {
 
         SparkConf conf = new SparkConf().setAppName("Tutorial").setMaster("local[2]");
 
+        Logger.getLogger("org").setLevel(Level.OFF);
+        Logger.getLogger("akka").setLevel(Level.OFF);
+
+
         SparkContext sc = new SparkContext(conf);
-//        JavaRDD<String> javaRDD = sc.textFile("text.txt", 2).toJavaRDD();
-//        long count =  javaRDD.map(a -> a.split(";")[1]).filter(f -> f.equals("asda")).count();
-//        System.out.println(count);
+
 
 
 
@@ -29,23 +34,25 @@ public class Main {
                 return new Trip(Double.parseDouble(tripString[2]), tripString[1], Integer.parseInt(tripString[0]));
             } );
 
+
+        tripJavaRDD.persist(StorageLevel.MEMORY_AND_DISK());
+
         JavaPairRDD<Integer, Double>  pair = tripJavaRDD.mapToPair(trip -> new Tuple2<>(trip.getDriverId(), trip.getDistance()))
-                                                        .reduceByKey((v1,v2) -> v1.doubleValue() + v2.doubleValue());
-        pair.
+                .persist(StorageLevel.MEMORY_AND_DISK())
+                .reduceByKey((v1,v2) -> v1.doubleValue() + v2.doubleValue())
+                .mapToPair(tripPairRDD ->  new Tuple2<Double, Integer>( tripPairRDD._2, tripPairRDD._1 )).sortByKey(false)
+                .mapToPair(tripReturn -> new Tuple2<Integer, Double>( tripReturn._2, tripReturn._1 ));
 
-        System.out.println(pair.collect());
+        System.out.println(pair.take(3).toString());
 
-        long overalDistToBoston = 0;
+
         long overalTripsToBoston = tripJavaRDD.filter( trip -> trip.getDistance() > 10).filter( trip -> trip.getDestination().toLowerCase().equals("boston")).count();
         System.out.println("trips to bost "+overalTripsToBoston);
 
         Double tripsDist = tripJavaRDD.filter(trip -> trip.getDestination().toLowerCase().equals("boston")).mapToDouble(Trip::getDistance).sum();
-        System.out.println("total dist "+tripsDist);
+        System.out.println("total dist to boston made "+tripsDist);
 
-//
-//        JavaRDD<String> javaRDD = sc.textFile("data/trips.txt",2).toJavaRDD();
-//        System.out.println(javaRDD.map(a->a.split(" ")).count());
-        driverRdd.foreach( f -> System.out.println(f.getDist()));
+
 
     }
 }
